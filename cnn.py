@@ -10,6 +10,35 @@ from tflearn.layers.conv import conv_2d, max_pool_2d
 from tflearn.layers.core import input_data, dropout, fully_connected
 from tflearn.layers.estimator import regression
 
+#Ignores divide by zero encountered in true_divide Error
+np.seterr(divide='ignore', invalid='ignore')
+
+def brightness_distortion(I, mu, sigma):
+    return np.sum(I * mu / sigma ** 2, axis=-1) / np.sum((mu / sigma) ** 2, axis=-1)
+
+
+def chromacity_distortion(I, mu, sigma):
+    alpha = brightness_distortion(I, mu, sigma)[..., None]
+    return np.sqrt(np.sum(((I - alpha * mu) / sigma) ** 2, axis=-1))
+
+# Applies mask to the leaf background
+def mask(img):
+    sat = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)[:, :, 1]
+    val = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)[:, :, 2]
+    sat = cv2.medianBlur(sat, 11)
+    val = cv2.medianBlur(val, 11)
+    thresh_S = cv2.adaptiveThreshold(sat, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 401, 10);
+
+    mean_S, stdev_S = cv2.meanStdDev(img, mask=255 - thresh_S)
+    mean_S = mean_S.ravel().flatten()
+    stdev_S = stdev_S.ravel()
+    chrom_S = chromacity_distortion(img, mean_S, stdev_S)
+    chrom255_S = cv2.normalize(chrom_S, chrom_S, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX).astype(np.uint8)[:, :,
+                 None]
+    thresh2_S = cv2.adaptiveThreshold(chrom255_S, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 401, 10);
+    img = cv2.bitwise_and(img, img, mask=thresh2_S)
+    return img
+
 
 # Returns class of image based on label
 def label_img(img):
@@ -31,8 +60,11 @@ def create_train_data():
     for img in tqdm(os.listdir(TRAIN_DIR)):
         label = label_img(img)
         path = os.path.join(TRAIN_DIR, img)
-        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)  # Read image in Grayscale (Preprocessing)
+        img = cv2.imread(path)  # Read image
         img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))  # Resize image to default size
+        img = mask(img)  # Apply mask to the image
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # Apply mask to the image
+        img = cv2.equalizeHist(img)  # Apply histogram equilization
         training_data.append([np.array(img), np.array(label)])
     shuffle(training_data)
     np.save('train/train_data.npy', training_data)
@@ -44,9 +76,12 @@ def process_test_data():
     testing_data = []
     for img in tqdm(os.listdir(TEST_DIR)):
         label = label_img(img)
-        path = os.path.join(TEST_DIR, img)
-        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)  # Read image in Grayscale (Preprocess)
+        path = os.path.join(TRAIN_DIR, img)
+        img = cv2.imread(path)  # Read image
         img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))  # Resize image to default size
+        img = mask(img)  # Apply mask to the image
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # Apply mask to the image
+        img = cv2.equalizeHist(img)  # Apply histogram equilization
         testing_data.append([np.array(img), np.array(label)])
     shuffle(testing_data)
     np.save('test/test_data.npy', testing_data)

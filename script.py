@@ -8,14 +8,19 @@ from tflearn.layers.conv import conv_2d, max_pool_2d
 from tflearn.layers.core import input_data, dropout, fully_connected
 from tflearn.layers.estimator import regression
 
+from image_process import *
+
 
 # Creates an array of image in the form [image, label]
 def process_verify_data(filepath):
     verifying_data = []
 
     img_name = filepath.split('.')[0]
-    img = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
-    img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+    img = cv2.imread(filepath)  # Read image in Grayscale (Preprocessing)
+    img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))  # Resize image to default size
+    img = mask(img)  # Apply mask to background
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
+    img = cv2.equalizeHist(img)  # Apply Histogram Equilization
     verifying_data = [np.array(img), img_name]
 
     np.save('classify/verify_data.npy', verifying_data)
