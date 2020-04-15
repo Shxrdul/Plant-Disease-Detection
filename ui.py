@@ -115,8 +115,11 @@ def analysis():
         for img in tqdm(os.listdir(verify_dir)):
             path = os.path.join(verify_dir, img)
             img_num = img.split('.')[0]
-            img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-            img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+            img = cv2.imread(filepath)  # Read image in Grayscale (Preprocessing)
+            img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))  # Resize image to default size
+            img = mask(img)  # Apply mask to background
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
+            img = cv2.equalizeHist(img)  # Apply Histogram Equilization
             verifying_data.append([np.array(img), img_num])
         np.save('verify_data.npy', verifying_data)
         return verifying_data
