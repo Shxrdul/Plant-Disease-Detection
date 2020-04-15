@@ -1,52 +1,53 @@
-import cv2
 import numpy as np
+import cv2
+import matplotlib.pyplot as plot
 
 
-def image_masking(filepath):
-    BLUR = 21
-    CANNY_THRESH_1 = 10
-    CANNY_THRESH_2 = 200
-    MASK_DILATE_ITER = 10
-    MASK_ERODE_ITER = 10
-    MASK_COLOR = (0.0, 0.0, 0.0)  # In BGR format
-
-    img = cv2.imread(filepath)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    edges = cv2.Canny(gray, CANNY_THRESH_1, CANNY_THRESH_2)
-    edges = cv2.dilate(edges, None)
-    edges = cv2.erode(edges, None)
-
-    contour_info = []
-    _, contours, __ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-
-    for c in contours:
-        contour_info.append((c, cv2.isContourConvex(c), cv2.contourArea(c),))
-    contour_info = sorted(contour_info, key=lambda c: c[2], reverse=True)
-
-    max_contour = contour_info[0]
-    mask = np.zeros(edges.shape)
-    cv2.fillConvexPoly(mask, max_contour[0], (255))
-
-    mask = cv2.dilate(mask, None, iterations=MASK_DILATE_ITER)
-    mask = cv2.erode(mask, None, iterations=MASK_ERODE_ITER)
-    mask = cv2.GaussianBlur(mask, (BLUR, BLUR), 0)
-
-    mask_stack = np.dstack([mask] * 3)
-    mask_stack = mask_stack.astype('float32') / 255.0
-    img = img.astype('float32') / 255.0
-
-    masked = (mask_stack * img) + ((1 - mask_stack) * MASK_COLOR)
-    masked = (masked * 255).astype('uint8')
-
-    fileName, fileExtension = filepath.split('.')
-    fileName += '-masked.'
-    filepath = fileName + fileExtension
-    print(filepath)
-
-    cv2.imwrite(filepath, masked)
+def brightness_distortion(I, mu, sigma):
+    return np.sum(I * mu / sigma ** 2, axis=-1) / np.sum((mu / sigma) ** 2, axis=-1)
 
 
-if __name__ == '__main__':
-    filepath = input("Enter Image File Name:\n")
-    image_masking(filepath)
+def chromacity_distortion(I, mu, sigma):
+    alpha = brightness_distortion(I, mu, sigma)[..., None]
+    return np.sqrt(np.sum(((I - alpha * mu) / sigma) ** 2, axis=-1))
+
+
+def mask(img):
+    sat = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)[:, :, 1]
+    val = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)[:, :, 2]
+    sat = cv2.medianBlur(sat, 11)
+    val = cv2.medianBlur(val, 11)
+    thresh_S = cv2.adaptiveThreshold(sat, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 401, 10);
+
+    mean_S, stdev_S = cv2.meanStdDev(img, mask=255 - thresh_S)
+    mean_S = mean_S.ravel().flatten()
+    stdev_S = stdev_S.ravel()
+    chrom_S = chromacity_distortion(img, mean_S, stdev_S)
+    chrom255_S = cv2.normalize(chrom_S, chrom_S, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX).astype(np.uint8)[:, :,
+                 None]
+    thresh2_S = cv2.adaptiveThreshold(chrom255_S, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 401, 10);
+    img2 = cv2.bitwise_and(img, img, mask=thresh2_S)
+    return img2
+
+
+def imgprocess():
+    img1 = cv2.imread('classify/test3.jpg')
+    img2 = mask(img1)
+    img3 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    img4 = cv2.equalizeHist(img3)
+    # return img4
+
+    images = [img1, img2, img3, img4]
+    titles = ['Original Image', 'Masked', 'Grayscale', 'Histo Equilize']
+    for i in range(4):
+        plot.subplot(2, 2, i + 1),
+        if i == 0:
+            plot.imshow(images[i])
+        else:
+            plot.imshow(images[i], cmap='gray')
+        plot.title(titles[i])
+        plot.xticks([]), plot.yticks([])
+    plot.show()
+
+
+imgprocess()
